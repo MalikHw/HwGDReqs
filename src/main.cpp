@@ -73,7 +73,7 @@ void HwGDReqs::showAuthPopup(std::string const& code, std::string const& link) {
 
 void HwGDReqs::startTwitchAuth() {
     // Twitch device auth: POST form and handle response on main thread using async
-    auto clientId = std::string("YOUR_TWITCH_CLIENT_ID");
+    auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
     auto body = fmt::format("client_id={}&scope={}", clientId, "chat:read");
 
     async::spawn(
