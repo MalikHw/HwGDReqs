@@ -1,5 +1,5 @@
 {
-    "geode": "5.7.0",
+    "geode": "5.7.1",
     "gd": {
         "win": "2.2081",
         "mac": "2.2081",
@@ -7,14 +7,122 @@
         "ios": "2.2081"
     },
     "version": "1.0.0",
-    "id": "MalikHw.HwGDReqs",
+    "id": "malikhw47.hwgdreqs",
     "name": "HwGDReqs",
-    "developer": "MalikHw",
-    "description": "desc.",
-    "tags": ["yes", "yeah"],
+    "developers": ["MalikHw47", "Axiom"],
+    "description": "Level requests system for twitch.",
+    "tags": ["online", "utility"],
     "links": {
         "source": "https://github.com/MalikHw/HwGDReqs",
         "community": "https://discord.gg/G9bZ92eg2n"
     },
-    "settings": {}
+    "settings": {
+        "auth": {
+            "name": "Twitch Auth",
+            "description": "Login to Twitch",
+            "type": "custom"
+        },
+        "master-toggle": {
+            "name": "Turn on requests",
+            "description": "Master toggle for the mod",
+            "type": "bool",
+            "default": false
+        },
+        "block-played": {
+            "name": "Block already played levels",
+            "description": "Block levels that have already been played",
+            "type": "bool",
+            "default": false
+        },
+        "filter-na": {
+            "name": "N/A",
+            "description": "N/A difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-easy": {
+            "name": "Easy",
+            "description": "Easy difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-normal": {
+            "name": "Normal",
+            "description": "Normal difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-hard": {
+            "name": "Hard",
+            "description": "Hard difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-harder": {
+            "name": "Harder",
+            "description": "Harder difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-insane": {
+            "name": "Insane",
+            "description": "Insane difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "filter-demon": {
+            "name": "Demon",
+            "description": "Demon difficulty",
+            "type": "bool",
+            "default": true
+        },
+        "rated-only": {
+            "name": "Rated only",
+            "description": "Only rated levels",
+            "type": "bool",
+            "default": true
+        },
+        "duration-tiny": {
+            "name": "Duration: Tiny",
+            "description": "Tiny duration",
+            "type": "bool",
+            "default": true
+        },
+        "duration-short": {
+            "name": "Duration: Short",
+            "description": "Short duration",
+            "type": "bool",
+            "default": true
+        },
+        "duration-medium": {
+            "name": "Duration: Medium",
+            "description": "Medium duration",
+            "type": "bool",
+            "default": true
+        },
+        "duration-long": {
+            "name": "Duration: Long",
+            "description": "Long duration",
+            "type": "bool",
+            "default": true
+        },
+        "duration-xl": {
+            "name": "Duration: XL",
+            "description": "XL duration",
+            "type": "bool",
+            "default": true
+        },
+        "platformers": {
+            "name": "Platformers",
+            "description": "Platformer levels",
+            "type": "bool",
+            "default": true
+        },
+        "block-disliked": {
+            "name": "Block disliked levels",
+            "description": "Block disliked levels",
+            "type": "bool",
+            "default": true
+        }
+    }
 }
