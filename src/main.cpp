@@ -1,6 +1,5 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
-#include <Geode/loader/SettingNodeV3.hpp>
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/utils/async.hpp>
 #include <Geode/utils/web.hpp>
@@ -18,21 +17,6 @@ struct TwitchAuth {
 
 class HwGDReqs;
 
-class TwitchAuthSetting : public SettingNodeV3 {
-public:
-    static TwitchAuthSetting* create(SettingV3* setting) {
-        auto ret = new TwitchAuthSetting();
-        if (ret->init(setting)) {
-            ret->autorelease();
-            return ret;
-        }
-        CC_SAFE_DELETE(ret);
-        return nullptr;
-    }
-
-    bool init(SettingV3* setting) override;
-    void onLogin(CCObject*);
-};
 
 class HwGDReqs {
 public:
@@ -62,33 +46,9 @@ private:
     void checkMessageForLevelId(std::string const& message, std::string const& username);
     void checkLevel(std::string const& levelId, std::string const& username);
 
-    class AuthPopup;
 };
 
-// Simplified: use geode::createQuickPopup in showAuthPopup instead of custom FLAlertLayer/Protocol
 
-bool TwitchAuthSetting::init(SettingV3* setting) {
-    if (!SettingNodeV3::init(setting)) return false;
-    
-    auto menu = CCMenu::create();
-    
-    auto btn = ButtonSprite::create("Login", "bigFont.fnt", "GJ_button_01.png");
-    btn->setScale(0.7f);
-    auto item = CCMenuItemSpriteExtra::create(
-        btn, this, menu_selector(TwitchAuthSetting::onLogin)
-    );
-    menu->addChild(item);
-    menu->setLayout(RowLayout::create());
-    
-    this->setContentHeight(50.f);
-    this->addChild(menu);
-    
-    return true;
-}
-
-void TwitchAuthSetting::onLogin(CCObject*) {
-    HwGDReqs::get()->startTwitchAuth();
-}
 
 void HwGDReqs::init() {
     loadAuth();
@@ -140,10 +100,74 @@ void HwGDReqs::startTwitchAuth() {
     );
 }
 
+class TwitchAuthSettingV3 : public SettingV3 {
+public:
+    static Result<std::shared_ptr<SettingV3>> parse(std::string key, std::string modID, matjson::Value const& json) {
+        auto ret = std::make_shared<TwitchAuthSettingV3>();
+        GEODE_UNWRAP(ret->parseBaseProperties(std::move(key), std::move(modID), json));
+        return Ok(ret);
+    }
+
+    bool load(matjson::Value const& json) override {
+        // no persisted fields for this UI-only setting
+        return true;
+    }
+    bool save(matjson::Value& json) const override {
+        // nothing to save
+        return true;
+    }
+    SettingNodeV3* createNode(float width) override;
+    bool isDefaultValue() const override { return true; }
+    void reset() override {}
+};
+
+class TwitchAuthSettingNode : public SettingNodeV3 {
+public:
+    static TwitchAuthSettingNode* create(std::shared_ptr<SettingV3> setting, float width) {
+        auto ret = new TwitchAuthSettingNode();
+        if (ret->init(std::move(setting), width)) {
+            ret->autorelease();
+            return ret;
+        }
+        CC_SAFE_DELETE(ret);
+        return nullptr;
+    }
+
+    bool init(std::shared_ptr<SettingV3> setting, float width) override {
+        if (!SettingNodeV3::init(setting, width)) return false;
+
+        auto menu = this->getButtonMenu();
+        if (!menu) {
+            menu = CCMenu::create();
+            this->addChild(menu);
+        }
+
+        auto btn = ButtonSprite::create("Login", "bigFont.fnt", "GJ_button_01.png");
+        btn->setScale(0.7f);
+        auto item = CCMenuItemSpriteExtra::create(btn, this, menu_selector(TwitchAuthSettingNode::onLogin));
+        menu->addChild(item);
+
+        this->setContentSize(cocos2d::CCSizeMake(width, 50.f));
+        return true;
+    }
+
+    void onLogin(CCObject*) {
+        HwGDReqs::get()->startTwitchAuth();
+    }
+
+    void onCommit() override {}
+    void onResetToDefault() override {}
+    bool hasUncommittedChanges() const override { return false; }
+    bool hasNonDefaultValue() const override { return false; }
+};
+
+SettingNodeV3* TwitchAuthSettingV3::createNode(float width) {
+    return TwitchAuthSettingNode::create(std::static_pointer_cast<SettingV3>(shared_from_this()), width);
+}
+
 void HwGDReqs::setupCustomSetting() {
-    // Register a custom setting type for v3 settings
-    Mod::get()->addCustomSettingType("twitch-auth", [](SettingV3* setting) {
-        return TwitchAuthSetting::create(setting);
+    Mod::get()->registerCustomSettingType("twitch-auth", [](std::string key, std::string modID, matjson::Value const& json) -> Result<std::shared_ptr<SettingV3>> {
+        return TwitchAuthSettingV3::parse(std::move(key), std::move(modID), json);
     });
 }
 
@@ -168,14 +192,9 @@ void HwGDReqs::saveAuth() {
     Mod::get()->setSavedValue("twitch-auth", obj);
 }
 
-void HwGDReqs::showAuthPopup(std::string const& code, std::string const& link) {
-    Loader::get()->queueInMainThread([code, link]() {
-        AuthPopup::create(code, link)->show();
-    });
-}
 
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    // Use async coroutine to poll without blocking threads
+    // async coroutine
     async::spawn([this, deviceCode, interval] -> arc::Future<> {
         auto clientId = std::string("YOUR_TWITCH_CLIENT_ID");
         while (true) {
@@ -257,7 +276,6 @@ void HwGDReqs::startChatPolling() {
 }
 
 void HwGDReqs::connectToEventSub() {
-    // Send subscription request
     auto body = fmt::format(R"({"type":"channel.chat.message","version":"1","condition":{"broadcaster_user_id":"{}","user_id":"{}"},"transport":{"method":"websocket","session_id":""}})", m_auth.userId, m_auth.userId);
     async::spawn(
         web::WebRequest()
@@ -273,8 +291,7 @@ void HwGDReqs::connectToEventSub() {
 }
 
 void HwGDReqs::pollEvents(std::string const& url, std::string const& sessionId) {
-    // For simplicity, we'll just use a basic approach here - in a real implementation you'd use WebSocket
-    // This is a placeholder to show the structure
+    // implementation soon
 }
 
 void HwGDReqs::checkMessageForLevelId(std::string const& message, std::string const& username) {
@@ -287,10 +304,10 @@ void HwGDReqs::checkMessageForLevelId(std::string const& message, std::string co
 }
 
 void HwGDReqs::checkLevel(std::string const& levelId, std::string const& username) {
-    auto req = web::WebRequest();
-    req.get(fmt::format("https://www.boomlings.com/database/getGJLevels21.php?gameVersion=22&binaryVersion=42&gdw=0&type=0&str={}&diff=-&len=-&page=0&total=0&uncompleted=0&onlyCompleted=0&featured=0&original=0&twoPlayer=0&coins=0&epic=0&secret=Wmfd2893gb7", levelId));
-    req.send()
-        .then([this, levelId, username](web::WebResponse const& resp) {
+    auto url = fmt::format("https://www.boomlings.com/database/getGJLevels21.php?gameVersion=22&binaryVersion=42&gdw=0&type=0&str={}&diff=-&len=-&page=0&total=0&uncompleted=0&onlyCompleted=0&featured=0&original=0&twoPlayer=0&coins=0&epic=0&secret=Wmfd2893gb7", levelId);
+    async::spawn(
+        web::WebRequest().get(url),
+        [this, levelId, username](web::WebResponse resp) {
             if (!resp.ok() || resp.string().empty() || resp.string() == "-1") {
                 return;
             }
@@ -304,10 +321,8 @@ void HwGDReqs::checkLevel(std::string const& levelId, std::string const& usernam
                     log::info("Found {}: {} by {} from {}", levelId, levelName, creatorName, username);
                 }
             }
-        })
-        .expect([](std::string const& err) {
-            log::error("Check level error: {}", err);
-        });
+        }
+    );
 }
 
 $on_mod(Loaded) {
