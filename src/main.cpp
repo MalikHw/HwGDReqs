@@ -77,7 +77,7 @@ void HwGDReqs::startTwitchAuth() {
 
     async::spawn(
         web::WebRequest().header("Content-Type", "application/x-www-form-urlencoded").bodyString(body).post("https://id.twitch.tv/oauth2/device"),
-        [this](web::WebResponse resp) {
+        [this](web::WebResponse resp){
             if (!resp.ok()) {
                 log::error("Failed to start device auth: {}", resp.string().unwrapOr(""));
                 return;
@@ -175,7 +175,7 @@ SettingNodeV3* TwitchAuthSettingV3::createNode(float width) {
 }
 
 void HwGDReqs::setupCustomSetting() {
-    (void)Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
+    Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
 }
 
 void HwGDReqs::loadAuth() {
@@ -204,7 +204,7 @@ void HwGDReqs::saveAuth() {
 
 
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    async::spawn([this, deviceCode, interval]() -> arc::Future<> {
+    $async(this, deviceCode, interval) {
         auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
         while (true) {
             auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
@@ -247,9 +247,9 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
             }
 
             // sleep
-            co_await arc::sleep(asp::Duration::fromSecs(interval));
+            std::this_thread::sleep_for(std::chrono::seconds(interval));
         }
-    });
+    };
 }
 
 void HwGDReqs::getTwitchUserId() {
