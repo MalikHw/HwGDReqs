@@ -75,34 +75,36 @@ void HwGDReqs::startTwitchAuth() {
     auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
     auto body = fmt::format("client_id={}&scope={}", clientId, "chat:read");
 
-    coro::spawn([this, clientId, body]() -> Task<void> {
-        auto resp = co_await web::WebRequest().header("Content-Type", "application/x-www-form-urlencoded").bodyString(body).post("https://id.twitch.tv/oauth2/device");
-        if (!resp.ok()) {
-            log::error("Failed to start device auth: {}", resp.string().unwrapOr(""));
-            co_return;
-        }
-        auto jsonRes = resp.json();
-        if (!jsonRes) {
-            log::error("Failed to parse JSON");
-            co_return;
-        }
-        auto json = jsonRes.unwrap();
-        auto deviceCodeRes = json["device_code"].asString();
-        auto userCodeRes = json["user_code"].asString();
-        auto verificationUriRes = json["verification_uri"].asString();
-        auto intervalRes = json["interval"].asInt();
-        if (!deviceCodeRes || !userCodeRes || !verificationUriRes || !intervalRes) {
-            log::error("Missing required fields in device auth response");
-            co_return;
-        }
-        auto deviceCode = deviceCodeRes.unwrap();
-        auto userCode = userCodeRes.unwrap();
-        auto verificationUri = verificationUriRes.unwrap();
-        auto interval = intervalRes.unwrap();
+    async::spawn(
+        web::WebRequest().header("Content-Type", "application/x-www-form-urlencoded").bodyString(body).post("https://id.twitch.tv/oauth2/device"),
+        [this](web::WebResponse resp) {
+            if (!resp.ok()) {
+                log::error("Failed to start device auth: {}", resp.string().unwrapOr(""));
+                return;
+            }
+            auto jsonRes = resp.json();
+            if (!jsonRes) {
+                log::error("Failed to parse JSON");
+                return;
+            }
+            auto json = jsonRes.unwrap();
+            auto deviceCodeRes = json["device_code"].asString();
+            auto userCodeRes = json["user_code"].asString();
+            auto verificationUriRes = json["verification_uri"].asString();
+            auto intervalRes = json["interval"].asInt();
+            if (!deviceCodeRes || !userCodeRes || !verificationUriRes || !intervalRes) {
+                log::error("Missing required fields in device auth response");
+                return;
+            }
+            auto deviceCode = deviceCodeRes.unwrap();
+            auto userCode = userCodeRes.unwrap();
+            auto verificationUri = verificationUriRes.unwrap();
+            auto interval = intervalRes.unwrap();
 
-        showAuthPopup(userCode, verificationUri);
-        pollForToken(deviceCode, interval);
-    });
+            showAuthPopup(userCode, verificationUri);
+            pollForToken(deviceCode, interval);
+        }
+    );
 }
 
 class TwitchAuthSettingV3 : public SettingV3 {
@@ -173,7 +175,7 @@ SettingNodeV3* TwitchAuthSettingV3::createNode(float width) {
 }
 
 void HwGDReqs::setupCustomSetting() {
-    Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
+    (void)Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
 }
 
 void HwGDReqs::loadAuth() {
@@ -202,7 +204,7 @@ void HwGDReqs::saveAuth() {
 
 
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    coro::spawn([this, deviceCode, interval]() -> Task<void> {
+    async::spawn([this, deviceCode, interval]() -> arc::Future<> {
         auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
         while (true) {
             auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
@@ -245,32 +247,34 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
             }
 
             // sleep
-            co_await coro::sleep(std::chrono::seconds(interval));
+            co_await arc::sleep(asp::Duration::fromSecs(interval));
         }
     });
 }
 
 void HwGDReqs::getTwitchUserId() {
-    coro::spawn([this]() -> Task<void> {
-        auto resp = co_await web::WebRequest()
+    async::spawn(
+        web::WebRequest()
             .header("Client-ID", "hq65d75rdxry2cfjgemvydqp2vfr84")
             .header("Authorization", fmt::format("Bearer {}", m_auth.accessToken))
-            .get("https://api.twitch.tv/helix/users");
-        if (!resp.ok()) {
-            log::error("Failed to get user ID: {}", resp.string().unwrapOr(""));
-            co_return;
-        }
-        auto jsonRes = resp.json();
-        if (!jsonRes) co_return;
-        auto json = jsonRes.unwrap();
-        if (json.contains("data") && json["data"].isArray() && json["data"].size() > 0) {
-            auto idRes = json["data"][0]["id"].asString();
-            if (idRes) {
-                m_auth.userId = idRes.unwrap();
-                saveAuth();
+            .get("https://api.twitch.tv/helix/users"),
+        [this](web::WebResponse resp) {
+            if (!resp.ok()) {
+                log::error("Failed to get user ID: {}", resp.string().unwrapOr(""));
+                return;
+            }
+            auto jsonRes = resp.json();
+            if (!jsonRes) return;
+            auto json = jsonRes.unwrap();
+            if (json.contains("data") && json["data"].isArray() && json["data"].size() > 0) {
+                auto idRes = json["data"][0]["id"].asString();
+                if (idRes) {
+                    m_auth.userId = idRes.unwrap();
+                    saveAuth();
+                }
             }
         }
-    });
+    );
 }
 
 void HwGDReqs::startChatPolling() {
@@ -294,15 +298,17 @@ void HwGDReqs::startChatPolling() {
 
 void HwGDReqs::connectToEventSub() {
     std::string body = R"({"type":"channel.chat.message","version":"1","condition":{"broadcaster_user_id":")" + m_auth.userId + R"(","user_id":")" + m_auth.userId + R"("},"transport":{"method":"websocket","session_id":""}})";
-    coro::spawn([this, body]() -> Task<void> {
-        auto resp = co_await web::WebRequest()
+    async::spawn(
+        web::WebRequest()
             .header("Client-ID", "hq65d75rdxry2cfjgemvydqp2vfr84")
             .header("Authorization", fmt::format("Bearer {}", m_auth.accessToken))
             .header("Content-Type", "application/json")
             .bodyString(body)
-            .post("https://api.twitch.tv/helix/eventsub/subscriptions");
-        log::info("EventSub response: {}", resp.string().unwrapOr(""));
-    });
+            .post("https://api.twitch.tv/helix/eventsub/subscriptions"),
+        [](web::WebResponse resp) {
+            log::info("EventSub response: {}", resp.string().unwrapOr(""));
+        }
+    );
 }
 
 void HwGDReqs::pollEvents(std::string const& url, std::string const& sessionId) {
@@ -320,23 +326,25 @@ void HwGDReqs::checkMessageForLevelId(std::string const& message, std::string co
 
 void HwGDReqs::checkLevel(std::string const& levelId, std::string const& username) {
     auto url = fmt::format("https://www.boomlings.com/database/getGJLevels21.php?gameVersion=22&binaryVersion=42&gdw=0&type=0&str={}&diff=-&len=-&page=0&total=0&uncompleted=0&onlyCompleted=0&featured=0&original=0&twoPlayer=0&coins=0&epic=0&secret=Wmfd2893gb7", levelId);
-    coro::spawn([this, levelId, username, url]() -> Task<void> {
-        auto resp = co_await web::WebRequest().get(url);
-        auto respStrRes = resp.string();
-        if (!resp.ok() || !respStrRes || respStrRes.unwrap().empty() || respStrRes.unwrap() == "-1") {
-            co_return;
-        }
-        auto response = respStrRes.unwrap();
-        if (response.find("#") != std::string::npos) {
-            auto levelData = response.substr(0, response.find("#"));
-            auto parts = utils::string::split(levelData, ":");
-            if (parts.size() > 2) {
-                auto levelName = parts[1];
-                auto creatorName = parts.size() > 5 ? parts[5] : "Unknown";
-                log::info("Found {}: {} by {} from {}", levelId, levelName, creatorName, username);
+    async::spawn(
+        web::WebRequest().get(url),
+        [this, levelId, username](web::WebResponse resp) {
+            auto respStrRes = resp.string();
+            if (!resp.ok() || !respStrRes || respStrRes.unwrap().empty() || respStrRes.unwrap() == "-1") {
+                return;
+            }
+            auto response = respStrRes.unwrap();
+            if (response.find("#") != std::string::npos) {
+                auto levelData = response.substr(0, response.find("#"));
+                auto parts = utils::string::split(levelData, ":");
+                if (parts.size() > 2) {
+                    auto levelName = parts[1];
+                    auto creatorName = parts.size() > 5 ? parts[5] : "Unknown";
+                    log::info("Found {}: {} by {} from {}", levelId, levelName, creatorName, username);
+                }
             }
         }
-    });
+    );
 }
 
 $on_mod(Loaded) {
