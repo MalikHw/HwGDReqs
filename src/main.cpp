@@ -204,8 +204,10 @@ void HwGDReqs::saveAuth() {
 
 
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    $async(this, deviceCode, interval) {
+    auto task = $async(deviceCode, interval) {
         auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
+        auto self = HwGDReqs::get();
+        
         while (true) {
             auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
             auto resp = co_await web::WebRequest()
@@ -221,14 +223,19 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
                 auto json = jsonRes.unwrap();
                 auto accessTokenRes = json["access_token"].asString();
                 if (accessTokenRes) {
-                    this->m_auth.accessToken = accessTokenRes.unwrap();
+                    auto accessToken = accessTokenRes.unwrap();
+                    std::string refreshToken;
                     if (json.contains("refresh_token")) {
                         auto refreshTokenRes = json["refresh_token"].asString();
                         if (refreshTokenRes)
-                            this->m_auth.refreshToken = refreshTokenRes.unwrap();
+                            refreshToken = refreshTokenRes.unwrap();
                     }
-                    this->saveAuth();
-                    this->getTwitchUserId();
+                    Loader::get()->queueInMainThread([self, accessToken, refreshToken]() {
+                        self->m_auth.accessToken = accessToken;
+                        self->m_auth.refreshToken = refreshToken;
+                        self->saveAuth();
+                        self->getTwitchUserId();
+                    });
                     co_return;
                 }
             } else {
@@ -245,9 +252,7 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
                     }
                 }
             }
-
-            // sleep
-            std::this_thread::sleep_for(std::chrono::seconds(interval));
+            co_await arc::sleep(std::chrono::seconds(interval));
         }
     };
 }
