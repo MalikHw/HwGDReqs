@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/malikhw/HwGDReqs/build/_deps/bindings-subbuild/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,74 @@
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/share/cmake/Modules/CMakeDetermineSystem.cmake:12 (find_program)"
+      - "CMakeLists.txt:16 (project)"
+    mode: "program"
+    variable: "CMAKE_UNAME"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "uname"
+    candidate_directories:
+      - "/tmp/.mount_CursorbgCkpH/usr/share/cursor/resources/app/resources/helpers/"
+      - "/home/malikhw/.local/bin/"
+      - "/tmp/.mount_CursorbgCkpH/usr/bin/"
+      - "/tmp/.mount_CursorbgCkpH/usr/sbin/"
+      - "/tmp/.mount_CursorbgCkpH/usr/games/"
+      - "/tmp/.mount_CursorbgCkpH/bin/"
+      - "/tmp/.mount_CursorbgCkpH/sbin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/bin/"
+      - "/usr/bin/site_perl/"
+      - "/usr/bin/vendor_perl/"
+      - "/usr/bin/core_perl/"
+      - "/var/lib/flatpak/exports/bin/"
+      - "/usr/lib/jvm/default/bin/"
+      - "/bin/"
+    searched_directories:
+      - "/tmp/.mount_CursorbgCkpH/usr/share/cursor/resources/app/resources/helpers/uname"
+      - "/home/malikhw/.local/bin/uname"
+      - "/tmp/.mount_CursorbgCkpH/usr/bin/uname"
+      - "/tmp/.mount_CursorbgCkpH/usr/sbin/uname"
+      - "/tmp/.mount_CursorbgCkpH/usr/games/uname"
+      - "/tmp/.mount_CursorbgCkpH/bin/uname"
+      - "/tmp/.mount_CursorbgCkpH/sbin/uname"
+      - "/usr/local/sbin/uname"
+      - "/usr/local/bin/uname"
+    found: "/usr/bin/uname"
+    search_context:
+      ENV{PATH}:
+        - "/tmp/.mount_CursorbgCkpH/usr/share/cursor/resources/app/resources/helpers"
+        - "/home/malikhw/.local/bin"
+        - "/tmp/.mount_CursorbgCkpH/usr/bin/"
+        - "/tmp/.mount_CursorbgCkpH/usr/sbin/"
+        - "/tmp/.mount_CursorbgCkpH/usr/games/"
+        - "/tmp/.mount_CursorbgCkpH/bin/"
+        - "/tmp/.mount_CursorbgCkpH/sbin/"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/bin"
+        - "/usr/bin/site_perl"
+        - "/usr/bin/vendor_perl"
+        - "/usr/bin/core_perl"
+        - "/var/lib/flatpak/exports/bin"
+        - "/usr/lib/jvm/default/bin"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/usr/share/cmake/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:16 (project)"
+    message: |
+      The system is: Linux - 7.0.10-zen1-1-zen - x86_64
+...
