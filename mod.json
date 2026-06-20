@@ -20,7 +20,7 @@
         "auth": {
             "name": "Twitch Auth",
             "description": "Login to Twitch",
-            "type": "custom"
+            "type": "custom:twitch-auth"
         },
         "master-toggle": {
             "name": "Turn on requests",
