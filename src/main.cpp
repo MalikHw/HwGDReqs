@@ -38,7 +38,7 @@ private:
     void loadAuth();
     void saveAuth();
     void showAuthPopup(std::string const& code, std::string const& link);
-    Task<> pollForToken(std::string const& deviceCode, int interval);
+    Task<void> pollForToken(std::string const& deviceCode, int interval);
     void getTwitchUserId();
     void startChatPolling();
     void connectToEventSub();
@@ -203,7 +203,7 @@ void HwGDReqs::saveAuth() {
 }
 
 
-Task<> HwGDReqs::pollForToken(std::string const& deviceCode, int interval) { // async coroutine
+Task<void> HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
     auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
     while (true) {
         auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
@@ -212,7 +212,7 @@ Task<> HwGDReqs::pollForToken(std::string const& deviceCode, int interval) { // 
             .bodyString(body)
             .post("https://id.twitch.tv/oauth2/token");
 
-        if (resp.ok()) { // i developed hate now towards john son (aka json)
+        if (resp.ok()) {
             auto jsonRes = resp.json();
             if (!jsonRes) {
                 co_return;
@@ -245,7 +245,11 @@ Task<> HwGDReqs::pollForToken(std::string const& deviceCode, int interval) { // 
             }
         }
 
-        co_await async::sleep(std::chrono::seconds(interval));
+        // Create a sleep task using std::this_thread::sleep_for in a Task::run
+        co_await Task<void>::run([interval](auto&&, auto&&) -> Task<void>::Result {
+            std::this_thread::sleep_for(std::chrono::seconds(interval));
+            return {};
+        });
     }
 }
 
