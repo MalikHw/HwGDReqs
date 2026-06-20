@@ -38,7 +38,7 @@ private:
     void loadAuth();
     void saveAuth();
     void showAuthPopup(std::string const& code, std::string const& link);
-    Task<void> pollForToken(std::string const& deviceCode, int interval);
+    void pollForToken(std::string const& deviceCode, int interval);
     void getTwitchUserId();
     void startChatPolling();
     void connectToEventSub();
@@ -102,7 +102,7 @@ void HwGDReqs::startTwitchAuth() {
             auto interval = intervalRes.unwrap();
 
             showAuthPopup(userCode, verificationUri);
-            coro::spawn(pollForToken(deviceCode, interval));
+            pollForToken(deviceCode, interval);
         }
     );
 }
@@ -203,54 +203,53 @@ void HwGDReqs::saveAuth() {
 }
 
 
-Task<void> HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
-    while (true) {
-        auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
-        auto resp = co_await web::WebRequest()
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .bodyString(body)
-            .post("https://id.twitch.tv/oauth2/token");
+void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
+    $async(this, deviceCode, interval) {
+        auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
+        while (true) {
+            auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
+            auto resp = co_await web::WebRequest()
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .bodyString(body)
+                .post("https://id.twitch.tv/oauth2/token");
 
-        if (resp.ok()) {
-            auto jsonRes = resp.json();
-            if (!jsonRes) {
-                co_return;
-            }
-            auto json = jsonRes.unwrap();
-            auto accessTokenRes = json["access_token"].asString();
-            if (accessTokenRes) {
-                m_auth.accessToken = accessTokenRes.unwrap();
-                if (json.contains("refresh_token")) {
-                    auto refreshTokenRes = json["refresh_token"].asString();
-                    if (refreshTokenRes)
-                        m_auth.refreshToken = refreshTokenRes.unwrap();
+            if (resp.ok()) {
+                auto jsonRes = resp.json();
+                if (!jsonRes) {
+                    co_return;
                 }
-                saveAuth();
-                getTwitchUserId();
-                co_return;
-            }
-        } else {
-            auto jsonRes = resp.json();
-            if (jsonRes) {
                 auto json = jsonRes.unwrap();
-                auto errorRes = json["error"].asString();
-                if (errorRes) {
-                    auto error = errorRes.unwrap();
-                    if (error != "authorization_pending") {
-                        log::error("Auth failed: {}", error);
-                        co_return;
+                auto accessTokenRes = json["access_token"].asString();
+                if (accessTokenRes) {
+                    this->m_auth.accessToken = accessTokenRes.unwrap();
+                    if (json.contains("refresh_token")) {
+                        auto refreshTokenRes = json["refresh_token"].asString();
+                        if (refreshTokenRes)
+                            this->m_auth.refreshToken = refreshTokenRes.unwrap();
+                    }
+                    this->saveAuth();
+                    this->getTwitchUserId();
+                    co_return;
+                }
+            } else {
+                auto jsonRes = resp.json();
+                if (jsonRes) {
+                    auto json = jsonRes.unwrap();
+                    auto errorRes = json["error"].asString();
+                    if (errorRes) {
+                        auto error = errorRes.unwrap();
+                        if (error != "authorization_pending") {
+                            log::error("Auth failed: {}", error);
+                            co_return;
+                        }
                     }
                 }
             }
-        }
 
-        // Create a sleep task using std::this_thread::sleep_for in a Task::run
-        co_await Task<void>::run([interval](auto&&, auto&&) -> Task<void>::Result {
+            // sleep
             std::this_thread::sleep_for(std::chrono::seconds(interval));
-            return {};
-        });
-    }
+        }
+    };
 }
 
 void HwGDReqs::getTwitchUserId() {
