@@ -89,10 +89,18 @@ void HwGDReqs::startTwitchAuth() {
                 return;
             }
             auto json = jsonRes.unwrap();
-            auto deviceCode = json["device_code"].asString();
-            auto userCode = json["user_code"].asString();
-            auto verificationUri = json["verification_uri"].asString();
-            auto interval = json["interval"].asInt();
+            auto deviceCodeRes = json["device_code"].asString();
+            auto userCodeRes = json["user_code"].asString();
+            auto verificationUriRes = json["verification_uri"].asString();
+            auto intervalRes = json["interval"].asInt();
+            if (!deviceCodeRes || !userCodeRes || !verificationUriRes || !intervalRes) {
+                log::error("Missing required fields in device auth response");
+                return;
+            }
+            auto deviceCode = deviceCodeRes.unwrap();
+            auto userCode = userCodeRes.unwrap();
+            auto verificationUri = verificationUriRes.unwrap();
+            auto interval = intervalRes.unwrap();
 
             showAuthPopup(userCode, verificationUri);
             pollForToken(deviceCode, interval);
@@ -174,13 +182,16 @@ void HwGDReqs::setupCustomSetting() {
 void HwGDReqs::loadAuth() {
     auto authJson = Mod::get()->getSavedValue<matjson::Value>("twitch-auth", matjson::makeObject());
     if (authJson.contains("access_token")) {
-        m_auth.accessToken = authJson["access_token"].asString();
+        auto res = authJson["access_token"].asString();
+        if (res) m_auth.accessToken = res.unwrap();
     }
     if (authJson.contains("refresh_token")) {
-        m_auth.refreshToken = authJson["refresh_token"].asString();
+        auto res = authJson["refresh_token"].asString();
+        if (res) m_auth.refreshToken = res.unwrap();
     }
     if (authJson.contains("user_id")) {
-        m_auth.userId = authJson["user_id"].asString();
+        auto res = authJson["user_id"].asString();
+        if (res) m_auth.userId = res.unwrap();
     }
 }
 
@@ -196,7 +207,7 @@ void HwGDReqs::saveAuth() {
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
     // async coroutine
     async::spawn([this, deviceCode, interval] -> arc::Future<> {
-        auto clientId = std::string("YOUR_TWITCH_CLIENT_ID");
+        auto clientId = std::string("hq65d75rdxry2cfjgemvydqp2vfr84");
         while (true) {
             auto body = fmt::format("client_id={}&device_code={}&grant_type={}", clientId, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
             auto resp = co_await web::WebRequest()
@@ -210,10 +221,14 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
                     co_return;
                 }
                 auto json = jsonRes.unwrap();
-                if (json.contains("access_token")) {
-                    m_auth.accessToken = json["access_token"].asString();
-                    if (json.contains("refresh_token"))
-                        m_auth.refreshToken = json["refresh_token"].asString();
+                auto accessTokenRes = json["access_token"].asString();
+                if (accessTokenRes) {
+                    m_auth.accessToken = accessTokenRes.unwrap();
+                    if (json.contains("refresh_token")) {
+                        auto refreshTokenRes = json["refresh_token"].asString();
+                        if (refreshTokenRes)
+                            m_auth.refreshToken = refreshTokenRes.unwrap();
+                    }
                     saveAuth();
                     getTwitchUserId();
                     co_return;
@@ -222,9 +237,13 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
                 auto jsonRes = resp.json();
                 if (jsonRes) {
                     auto json = jsonRes.unwrap();
-                    if (json.contains("error") && json["error"].asString() != "authorization_pending") {
-                        log::error("Auth failed: {}", json["error"].asString());
-                        co_return;
+                    auto errorRes = json["error"].asString();
+                    if (errorRes) {
+                        auto error = errorRes.unwrap();
+                        if (error != "authorization_pending") {
+                            log::error("Auth failed: {}", error);
+                            co_return;
+                        }
                     }
                 }
             }
@@ -237,7 +256,7 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
 void HwGDReqs::getTwitchUserId() {
     async::spawn(
         web::WebRequest()
-            .header("Client-ID", "YOUR_TWITCH_CLIENT_ID")
+            .header("Client-ID", "hq65d75rdxry2cfjgemvydqp2vfr84")
             .header("Authorization", fmt::format("Bearer {}", m_auth.accessToken))
             .get("https://api.twitch.tv/helix/users"),
         [this](web::WebResponse resp) {
@@ -249,8 +268,11 @@ void HwGDReqs::getTwitchUserId() {
             if (!jsonRes) return;
             auto json = jsonRes.unwrap();
             if (json.contains("data") && json["data"].isArray() && json["data"].size() > 0) {
-                m_auth.userId = json["data"][0]["id"].asString();
-                saveAuth();
+                auto idRes = json["data"][0]["id"].asString();
+                if (idRes) {
+                    m_auth.userId = idRes.unwrap();
+                    saveAuth();
+                }
             }
         }
     );
@@ -279,7 +301,7 @@ void HwGDReqs::connectToEventSub() {
     auto body = fmt::format(R"({"type":"channel.chat.message","version":"1","condition":{"broadcaster_user_id":"{}","user_id":"{}"},"transport":{"method":"websocket","session_id":""}})", m_auth.userId, m_auth.userId);
     async::spawn(
         web::WebRequest()
-            .header("Client-ID", "YOUR_TWITCH_CLIENT_ID")
+            .header("Client-ID", "hq65d75rdxry2cfjgemvydqp2vfr84")
             .header("Authorization", fmt::format("Bearer {}", m_auth.accessToken))
             .header("Content-Type", "application/json")
             .bodyString(body)
