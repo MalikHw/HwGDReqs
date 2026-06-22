@@ -4,7 +4,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/ui/GeodeUI.hpp>
-#include <Geode/utils/async.hpp>
+#include <Geode/utils/coro.hpp>
 #include <Geode/utils/web.hpp>
 
 using namespace geode::prelude;
@@ -24,72 +24,10 @@ void HwGDReqs::showAuthPopup(std::string const& code, std::string const& link) {
     });
 }
 
-void HwGDReqs::pollToken() {
-    log::info("[HwGDReqs] Polling for token...");
-    auto body = fmt::format("client_id={}&device_code={}&grant_type={}", 
-        TWITCH_CLIENT_ID, m_deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
-
-    m_tokenTask.spawn("hwd-poll-token",
-        web::WebRequest()
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .bodyString(body)
-            .post("https://id.twitch.tv/oauth2/token"),
-        [this](web::WebResponse resp) {
-            if (!resp.ok()) {
-                log::debug("[HwGDReqs] poll response: {}", resp.code());
-                reschedule();
-                return;
-            }
-            auto jsonRes = resp.json();
-            if (!jsonRes) {
-                log::debug("[HwGDReqs] poll json error");
-                reschedule();
-                return;
-            }
-            auto json = jsonRes.unwrap();
-            if (json.contains("access_token")) {
-                auto accessTokenRes = json["access_token"].asString();
-                if (accessTokenRes) {
-                    m_auth.accessToken = accessTokenRes.unwrap();
-                    if (json.contains("refresh_token")) {
-                        auto refreshTokenRes = json["refresh_token"].asString();
-                        if (refreshTokenRes)
-                            m_auth.refreshToken = refreshTokenRes.unwrap();
-                    }
-                    saveAuth();
-                    FLAlertLayer::create("Twitch Login", "Logged in!", "OK")->show();
-                    getTwitchUserId();
-                }
-            } else {
-                log::debug("[HwGDReqs] waiting for authorization...");
-                reschedule();
-            }
-        }
-    );
-}
-
-void HwGDReqs::reschedule() {
-    log::info("[HwGDReqs] Rescheduling poll in {} seconds", m_pollInterval);
-    if (!m_schedulerNode->getParent()) {
-        log::warn("[HwGDReqs] Scheduler not in scene, re-adding...");
-        if (auto scene = CCDirector::get()->getRunningScene()) {
-            scene->addChild(m_schedulerNode);
-        } else {
-            log::error("[HwGDReqs] No running scene!");
-            return;
-        }
-    }
-
-    m_schedulerNode->scheduleOnce(
-        schedule_selector(TwitchSchedulerNode::rescheduleTick),
-        (float)m_pollInterval
-    );
-}
-
 void HwGDReqs::startTwitchAuth() {
     auto body = fmt::format("client_id={}&scope={}", TWITCH_CLIENT_ID, "chat:read");
 
-    m_deviceTask.spawn("hwd-device",
+    async::spawn(
         web::WebRequest().header("Content-Type", "application/x-www-form-urlencoded").bodyString(body).post("https://id.twitch.tv/oauth2/device"),
         [this](web::WebResponse resp){
             if (!resp.ok()) {
@@ -110,24 +48,13 @@ void HwGDReqs::startTwitchAuth() {
                 log::error("Missing required fields in device auth response");
                 return;
             }
-            m_deviceCode = deviceCodeRes.unwrap();
+            auto deviceCode = deviceCodeRes.unwrap();
             auto userCode = userCodeRes.unwrap();
             auto verificationUri = verificationUriRes.unwrap();
-            m_pollInterval = intervalRes.unwrap();
+            auto interval = intervalRes.unwrap();
 
             showAuthPopup(userCode, verificationUri);
-            if (!m_schedulerNode) {
-                m_schedulerNode = TwitchSchedulerNode::create();
-                m_schedulerNode->retain();
-                m_schedulerNode->onReschedule = [this]() { pollToken(); };
-            }
-            if (auto scene = CCDirector::get()->getRunningScene()) {
-                if (!m_schedulerNode->getParent()) {
-                    scene->addChild(m_schedulerNode);
-                }
-            }
-            
-            pollToken();
+            pollForToken(deviceCode, interval);
         }
     );
 }
@@ -200,7 +127,7 @@ SettingNodeV3* TwitchAuthSettingV3::createNode(float width) {
 }
 
 void HwGDReqs::setupCustomSetting() {
-    (void)Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
+    Mod::get()->registerCustomSettingType("twitch-auth", &TwitchAuthSettingV3::parse);
 }
 
 void HwGDReqs::loadAuth() {
@@ -225,6 +152,53 @@ void HwGDReqs::saveAuth() {
     obj["refresh_token"] = m_auth.refreshToken;
     obj["user_id"] = m_auth.userId;
     Mod::get()->setSavedValue("twitch-auth", obj);
+}
+
+void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
+    $async(this, deviceCode, interval) {
+        while (true) {
+            auto body = fmt::format("client_id={}&device_code={}&grant_type={}", TWITCH_CLIENT_ID, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
+            auto resp = co_await web::WebRequest()
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .bodyString(body)
+                .post("https://id.twitch.tv/oauth2/token");
+
+            if (resp.ok()) {
+                auto jsonRes = resp.json();
+                if (!jsonRes) {
+                    co_return;
+                }
+                auto json = jsonRes.unwrap();
+                auto accessTokenRes = json["access_token"].asString();
+                if (accessTokenRes) {
+                    this->m_auth.accessToken = accessTokenRes.unwrap();
+                    if (json.contains("refresh_token")) {
+                        auto refreshTokenRes = json["refresh_token"].asString();
+                        if (refreshTokenRes)
+                            this->m_auth.refreshToken = refreshTokenRes.unwrap();
+                    }
+                    this->saveAuth();
+                    this->getTwitchUserId();
+                    co_return;
+                }
+            } else {
+                auto jsonRes = resp.json();
+                if (jsonRes) {
+                    auto json = jsonRes.unwrap();
+                    auto errorRes = json["error"].asString();
+                    if (errorRes) {
+                        auto error = errorRes.unwrap();
+                        if (error != "authorization_pending") {
+                            log::error("Auth failed: {}", error);
+                            co_return;
+                        }
+                    }
+                }
+            }
+
+            std::this_thread::sleep_for(std::chrono::seconds(interval));
+        }
+    };
 }
 
 void HwGDReqs::getTwitchUserId() {
