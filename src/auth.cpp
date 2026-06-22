@@ -155,7 +155,7 @@ void HwGDReqs::saveAuth() {
 }
 
 void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
-    $async(this, deviceCode, interval) {
+    $async(deviceCode, interval, this) {
         while (true) {
             auto body = fmt::format("client_id={}&device_code={}&grant_type={}", TWITCH_CLIENT_ID, deviceCode, "urn:ietf:params:oauth:grant-type:device_code");
             auto resp = co_await web::WebRequest()
@@ -196,7 +196,7 @@ void HwGDReqs::pollForToken(std::string const& deviceCode, int interval) {
                 }
             }
 
-            std::this_thread::sleep_for(std::chrono::seconds(interval));
+            co_await arc::sleep(asp::Duration::fromSecs(interval));
         }
     };
 }
