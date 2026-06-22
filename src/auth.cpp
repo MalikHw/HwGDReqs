@@ -65,7 +65,7 @@ arc::Future<> HwGDReqs::pollForToken(std::string deviceCode, int interval) {
             }
         }
 
-        co_await async::sleep(std::chrono::seconds(interval));
+        co_await arc::sleep(asp::Duration::fromSecs(interval));
     }
 }
 
