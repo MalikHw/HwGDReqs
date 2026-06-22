@@ -4,6 +4,8 @@
 #include <string>
 #include <thread>
 
+#include <Geode/utils/async.hpp>
+
 struct TwitchAuth {
     std::string accessToken;
     std::string refreshToken;
@@ -30,7 +32,7 @@ private:
     void loadAuth();
     void saveAuth();
     void showAuthPopup(std::string const& code, std::string const& link);
-    void pollForToken(std::string const& deviceCode, int interval);
+    arc::Future<> pollForToken(std::string deviceCode, int interval);
     void getTwitchUserId();
     void startChatPolling();
     void connectToEventSub();
