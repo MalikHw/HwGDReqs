@@ -1,15 +1,34 @@
 #pragma once
 
-#include <mutex>
 #include <string>
-#include <thread>
 
+#include <Geode/Geode.hpp>
 #include <Geode/utils/async.hpp>
 
 struct TwitchAuth {
     std::string accessToken;
     std::string refreshToken;
     std::string userId;
+};
+
+class TwitchSchedulerNode : public cocos2d::CCNode {
+public:
+    std::function<void()> onPoll;
+    std::function<void()> onReschedule;
+    static TwitchSchedulerNode* create() {
+        auto ret = new TwitchSchedulerNode();
+        if (ret->init()) {
+            ret->autorelease();
+            return ret;
+        }
+        CC_SAFE_DELETE(ret);
+        return nullptr;
+    }
+    void pollTick(float) {if (onPoll) onPoll();}
+    void rescheduleTick(float) {
+        this->unschedule(schedule_selector(TwitchSchedulerNode::rescheduleTick));
+        if (onReschedule) onReschedule();
+    }
 };
 
 class HwGDReqs {
@@ -24,15 +43,19 @@ public:
 
 private:
     TwitchAuth m_auth;
-    bool m_polling = false;
-    std::thread m_pollThread;
-    std::mutex m_mutex;
+    std::string m_deviceCode;
+    int m_pollInterval = 5;
+    geode::async::TaskHolder<geode::web::WebResponse> m_deviceTask;
+    geode::async::TaskHolder<geode::web::WebResponse> m_tokenTask;
+    geode::async::TaskHolder<geode::web::WebResponse> m_userIdTask;
+    TwitchSchedulerNode* m_schedulerNode = nullptr;
 
     void setupCustomSetting();
     void loadAuth();
     void saveAuth();
     void showAuthPopup(std::string const& code, std::string const& link);
-    arc::Future<> pollForToken(std::string deviceCode, int interval);
+    void pollToken();
+    void reschedule();
     void getTwitchUserId();
     void startChatPolling();
     void connectToEventSub();
